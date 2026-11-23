@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>番剧搜索管理 · beta</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23007AFF'/%3E%3Cg fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M7 5.5v13M11 5.5v13M15.5 6.5v11M18.5 7.5v9'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  /* ============ 基础 ============ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #1d1d1f;
+    --ink-2: #6e6e73;
+    --accent: #007aff;
+    --accent-ink: #0a64d8;
+    --line: rgba(0, 0, 0, .08);
+    --chip-bg: #eaf2ff;
+    --chip-ink: #2b6cb0;
+    --radius: 16px;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: linear-gradient(175deg, #eef3f9 0%, #e8edf5 45%, #eaeaf3 100%);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* 液态玻璃需要有内容可折射，四周放极淡的色晕 */
+  .bg-glow { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .bg-glow span {
+    position: absolute; border-radius: 50%;
+    filter: blur(72px);
+  }
+  .bg-glow .g1 { width: 46vw; height: 46vw; left: -12vw; bottom: -18vw; opacity: .55; background: radial-gradient(circle, rgba(94,134,255,.24), transparent 70%); }
+  .bg-glow .g2 { width: 42vw; height: 42vw; right: -10vw; bottom: -16vw; opacity: .5; background: radial-gradient(circle, rgba(255,158,190,.22), transparent 70%); }
+  .bg-glow .g3 { width: 38vw; height: 38vw; right: -8vw; top: -14vw; opacity: .4; background: radial-gradient(circle, rgba(120,170,255,.22), transparent 70%); }
+  .bg-glow .g4 { width: 34vw; height: 34vw; left: -8vw; top: -10vw; opacity: .32; background: radial-gradient(circle, rgba(200,170,255,.18), transparent 70%); }
+
+  .content {
+    position: relative; z-index: 1;
+    max-width: 1040px; margin: 0 auto;
+    padding: 28px 20px 150px;
+  }
+  .page-head h1 { font-size: 26px; font-weight: 700; letter-spacing: .01em; }
+
+  .view { display: none; }
+  .view.is-active { display: block; animation: view-in .28s ease both; }
+  @keyframes view-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ============ 表单面板（液态玻璃） ============ */
+  .panel {
+    position: relative;
+    margin-top: 18px;
+    padding: 22px 20px;
+    border-radius: 26px;
+    background:
+      radial-gradient(130% 58% at 50% -12%, rgba(255, 255, 255, .62), rgba(255, 255, 255, 0) 62%),
+      linear-gradient(165deg, rgba(255, 255, 255, .62) 0%, rgba(255, 255, 255, .30) 44%, rgba(255, 255, 255, .46) 100%);
+    -webkit-backdrop-filter: blur(28px) saturate(190%) brightness(1.06);
+    backdrop-filter: blur(28px) saturate(190%) brightness(1.06);
+    border: 1px solid rgba(255, 255, 255, .7);
+    box-shadow:
+      0 22px 54px rgba(31, 41, 80, .16),
+      0 2px 8px rgba(31, 41, 80, .05),
+      inset 0 1.4px 1px rgba(255, 255, 255, .95),
+      inset 0 -1px 2px rgba(255, 255, 255, .28);
+    animation: panel-in .5s cubic-bezier(.22, 1, .36, 1) both;
+  }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+  .form-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 640px) { .form-grid.two { grid-template-columns: 1fr 1fr; } }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .field-label { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+  .input {
+    width: 100%; min-width: 0;
+    height: 44px; padding: 0 13px;
+    font-size: 16px; color: var(--ink);
+    background: rgba(255, 255, 255, .5);
+    border: 1px solid rgba(255, 255, 255, .75);
+    border-radius: 12px;
+    outline: none;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .7), 0 1px 2px rgba(31, 41, 80, .04);
+    transition: background .2s, border-color .2s, box-shadow .2s, transform .2s;
+  }
+  .input::placeholder { color: #a6acb6; }
+  .input:hover { background: rgba(255, 255, 255, .66); }
+  .input:focus {
+    background: rgba(255, 255, 255, .88);
+    border-color: rgba(0, 122, 255, .5);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, .14), inset 0 1px 1px rgba(255, 255, 255, .9);
+  }
+
+  /* 标签编辑器 */
+  .tag-editor {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    min-height: 44px; padding: 7px 10px;
+    background: rgba(255, 255, 255, .5);
+    border: 1px solid rgba(255, 255, 255, .75);
+    border-radius: 12px;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .7), 0 1px 2px rgba(31, 41, 80, .04);
+    transition: background .2s, border-color .2s, box-shadow .2s;
+  }
+  .tag-editor:hover { background: rgba(255, 255, 255, .66); }
+  .tag-editor:focus-within {
+    background: rgba(255, 255, 255, .88);
+    border-color: rgba(0, 122, 255, .5);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, .14), inset 0 1px 1px rgba(255, 255, 255, .9);
+  }
+  .tag-editor input {
+    flex: 1 1 120px; min-width: 120px; height: 30px;
+    border: none; outline: none; background: transparent;
+    font-size: 16px; color: var(--ink);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    max-width: 100%;
+    padding: 5px 8px 5px 11px;
+    font-size: 13px; line-height: 1;
+    color: var(--chip-ink);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .85), rgba(234, 242, 255, .95));
+    border: 1px solid rgba(0, 122, 255, .14);
+    box-shadow: 0 1px 3px rgba(43, 108, 176, .12), inset 0 1px 0 rgba(255, 255, 255, .9);
+    border-radius: 999px; white-space: nowrap;
+    animation: chip-pop .26s cubic-bezier(.34, 1.56, .64, 1) both;
+  }
+  @keyframes chip-pop {
+    from { opacity: 0; transform: scale(.6); }
+    55% { transform: scale(1.08); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .chip-x {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; padding: 0;
+    border: none; border-radius: 50%;
+    background: rgba(43, 108, 176, .18); color: var(--chip-ink);
+    font-size: 12px; line-height: 1; cursor: pointer;
+  }
+  .chip-x:hover { background: rgba(43, 108, 176, .32); }
+
+  .form-error { font-size: 13px; color: #d70015; }
+  .btn-primary {
+    position: relative;
+    margin-top: 18px; width: 100%; height: 48px;
+    transition: margin-top .25s cubic-bezier(.22, 1, .36, 1), transform .14s cubic-bezier(.34, 1.4, .5, 1), box-shadow .2s, filter .2s, background .2s, color .2s;
+    font-size: 16px; font-weight: 600; color: #0752b5;
+    background:
+      radial-gradient(130% 90% at 50% -30%, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, 0) 58%),
+      linear-gradient(180deg, rgba(214, 236, 255, .9) 0%, rgba(180, 217, 255, .72) 52%, rgba(158, 204, 255, .82) 100%);
+    -webkit-backdrop-filter: blur(18px) saturate(190%) brightness(1.06);
+    backdrop-filter: blur(18px) saturate(190%) brightness(1.06);
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 14px;
+    cursor: pointer;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .5);
+    box-shadow:
+      0 10px 26px rgba(0, 122, 255, .18),
+      0 2px 6px rgba(31, 41, 80, .06),
+      inset 0 1.4px 1px rgba(255, 255, 255, .95),
+      inset 0 -2px 4px rgba(0, 122, 255, .16);
+  }
+  .btn-primary:hover {
+    filter: brightness(1.04) saturate(1.06);
+    box-shadow:
+      0 12px 30px rgba(0, 122, 255, .24),
+      0 2px 6px rgba(31, 41, 80, .07),
+      inset 0 1.4px 1px rgba(255, 255, 255, 1),
+      inset 0 -2px 4px rgba(0, 122, 255, .2);
+  }
+  .btn-primary:active {
+    transform: scale(.96);
+    box-shadow:
+      0 4px 12px rgba(0, 122, 255, .16),
+      inset 0 1.4px 1px rgba(255, 255, 255, .9),
+      inset 0 3px 8px rgba(0, 100, 210, .14);
+  }
+  .btn-primary.is-done {
+    color: #076d33;
+    background:
+      radial-gradient(130% 90% at 50% -30%, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, 0) 58%),
+      linear-gradient(180deg, rgba(228, 248, 236, .92) 0%, rgba(196, 238, 214, .78) 52%, rgba(178, 232, 202, .86) 100%);
+    box-shadow:
+      0 10px 26px rgba(52, 199, 89, .18),
+      0 2px 6px rgba(31, 41, 80, .05),
+      inset 0 1.4px 1px rgba(255, 255, 255, .95),
+      inset 0 -2px 4px rgba(52, 199, 89, .16);
+  }
+  /* 补全浮层展开时，按钮下移让出空间，避免浮层与按钮重叠 */
+  .panel.suggest-open .btn-primary { margin-top: 56px; }
+
+  /* ============ 自动补全浮层 ============ */
+  .ac-wrap { position: relative; }
+  .suggest {
+    position: absolute; z-index: 40;
+    top: calc(100% + 8px); left: 0; right: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .95) 0%, rgba(246, 250, 255, .9) 100%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    backdrop-filter: blur(26px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, .9);
+    border-radius: 15px;
+    box-shadow:
+      0 14px 36px rgba(15, 23, 42, .18),
+      inset 0 1px 1px rgba(255, 255, 255, .95);
+    overflow: hidden;
+  }
+  .suggest-item {
+    display: block; width: 100%;
+    padding: 10px 14px; text-align: left;
+    font-size: 15px; color: var(--ink);
+    background: none; border: none; cursor: pointer;
+  }
+  .suggest-item .ac-tag { color: var(--accent-ink); font-weight: 500; }
+  .suggest-item.on, .suggest-item:hover { background: rgba(0, 122, 255, .10); }
+
+  /* ============ 卡片网格 ============ */
+  .grid {
+    display: grid; grid-template-columns: 1fr;
+    gap: 14px; margin-top: 20px;
+    transition: margin-top .25s cubic-bezier(.22, 1, .36, 1);
+  }
+  @media (min-width: 560px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (min-width: 900px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 1200px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+  .card {
+    min-width: 0;
+    display: flex; flex-direction: column;
+    background: rgba(255, 255, 255, .72);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: var(--radius);
+    padding: 15px 16px;
+    box-shadow: 0 4px 16px rgba(31, 38, 135, .06);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(31, 38, 135, .12); }
+  .card-name {
+    font-size: 16px; font-weight: 650; line-height: 1.35;
+    word-break: break-word; overflow-wrap: anywhere;
+  }
+  .card-alias { margin-top: 3px; font-size: 13px; color: var(--ink-2); word-break: break-word; overflow-wrap: anywhere; }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .card-foot { margin-top: auto; padding-top: 10px; display: flex; justify-content: flex-end; }
+  .btn-del {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: inherit; font-size: 12px; line-height: 1;
+    color: #ff3b30; background: transparent;
+    border: none; border-radius: 999px;
+    padding: 6px 10px; cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-del svg { width: 13px; height: 13px; }
+  .btn-del:hover { background: rgba(255, 59, 48, .12); }
+  .card-tags .tag {
+    font-size: 12px; line-height: 1;
+    padding: 5px 9px; border-radius: 999px;
+    color: var(--chip-ink); background: var(--chip-bg);
+    white-space: nowrap; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .empty {
+    margin-top: 46px; text-align: center;
+    font-size: 15px; color: var(--ink-2);
+  }
+
+  /* ============ 搜索 ============ */
+  .search-bar { position: relative; margin-top: 18px; }
+  .search-bar .s-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 20px; color: #8e939c; pointer-events: none;
+  }
+  .search-bar input {
+    width: 100%; height: 50px;
+    padding: 0 16px 0 44px; font-size: 16px;
+    color: var(--ink);
+    background: rgba(255, 255, 255, .72);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, .85);
+    border-radius: 15px;
+    box-shadow: 0 6px 24px rgba(31, 38, 135, .07);
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0, 122, 255, .15); }
+  /* 补全浮层展开时，搜索结果下移让出空间 */
+  .search-bar.suggest-open ~ #search-results { margin-top: 66px; }
+
+  /* ============ 底部液态玻璃切换栏 ============ */
+  .dock {
+    position: fixed; z-index: 50;
+    left: 50%; bottom: max(18px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(380px, calc(100vw - 36px));
+    display: flex; padding: 6px;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    cursor: grab;
+    background:
+      radial-gradient(120% 140% at 50% -30%, rgba(255, 255, 255, .6), rgba(255, 255, 255, 0) 70%),
+      linear-gradient(168deg, rgba(255, 255, 255, .52) 0%, rgba(255, 255, 255, .28) 55%, rgba(255, 255, 255, .42) 100%);
+    -webkit-backdrop-filter: blur(32px) saturate(210%) brightness(1.08);
+    backdrop-filter: blur(32px) saturate(210%) brightness(1.08);
+    border: 1px solid rgba(255, 255, 255, .65);
+    border-radius: 36px;
+    box-shadow:
+      0 16px 46px rgba(15, 23, 42, .22),
+      0 2px 10px rgba(15, 23, 42, .08),
+      inset 0 1.5px 1.5px rgba(255, 255, 255, .98),
+      inset 0 -1.5px 3px rgba(255, 255, 255, .22);
+  }
+  .dock-slider {
+    position: absolute; z-index: 0;
+    left: 6px; top: 6px; bottom: 6px;
+    width: calc((100% - 12px) / 2);
+    background:
+      radial-gradient(120% 140% at 50% -16%, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 62%),
+      linear-gradient(180deg, rgba(255, 255, 255, .26) 0%, rgba(214, 233, 255, .18) 100%);
+    -webkit-backdrop-filter: blur(20px) saturate(220%) brightness(1.16);
+    backdrop-filter: blur(20px) saturate(220%) brightness(1.16);
+    border: 1px solid rgba(255, 255, 255, .5);
+    border-radius: 30px;
+    box-shadow:
+      0 6px 20px rgba(10, 30, 80, .13),
+      inset 0 1.5px 1.5px rgba(255, 255, 255, .85),
+      inset 0 0 14px rgba(255, 255, 255, .22),
+      inset 0 -8px 16px rgba(0, 122, 255, .08);
+    transition: transform .38s cubic-bezier(.34, 1.4, .42, 1);
+    will-change: transform;
+  }
+  .dock.is-search .dock-slider { transform: translateX(100%); }
+  .dock-btn {
+    position: relative; z-index: 1;
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    height: 52px;
+    font-size: 15px; font-weight: 500; color: #3a3f47;
+    background: none; border: none; border-radius: 30px;
+    cursor: pointer;
+    transition: color .2s, background .2s;
+    font-family: inherit;
+  }
+  .dock-btn { cursor: pointer; }
+  .dock-btn:hover:not(.is-active) { background: rgba(255, 255, 255, .35); }
+  .dock-btn:active:not(.is-active) { background: rgba(255, 255, 255, .5); }
+  .dock-btn svg { width: 21px; height: 21px; transform-origin: 50% 50%; transition: transform .15s; }
+  .dock-btn.is-active { color: var(--accent); font-weight: 650; }
+  .dock.is-dragging, .dock.is-dragging .dock-btn { cursor: grabbing; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"><span class="g1"></span><span class="g2"></span><span class="g3"></span><span class="g4"></span></div>
+
+  <main class="content">
+    <!-- ===== 视图：资源库 ===== -->
+    <section id="view-library" class="view is-active">
+      <header class="page-head"><h1>资源库</h1></header>
+
+      <form id="add-form" class="panel" autocomplete="off" novalidate>
+        <div class="form-grid two">
+          <label class="field">
+            <span class="field-label">番名</span>
+            <input id="input-name" class="input" type="text" maxlength="60" placeholder="输入番名">
+          </label>
+          <label class="field">
+            <span class="field-label">别名</span>
+            <input id="input-alias" class="input" type="text" maxlength="60">
+          </label>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <span class="field-label">标签（输入后回车，可添加多个）</span>
+          <div class="ac-wrap">
+            <div class="tag-editor" id="tag-editor">
+              <input id="input-tag" type="text" maxlength="30">
+            </div>
+            <div class="suggest" id="suggest-add" hidden></div>
+          </div>
+        </div>
+        <p class="form-error" id="form-error" hidden></p>
+        <button type="submit" class="btn-primary" id="btn-add">添加</button>
+      </form>
+
+      <div id="library-grid" class="grid"></div>
+      <div class="empty" id="library-empty" hidden>资源库还是空的，添加第一部番剧吧</div>
+    </section>
+
+    <!-- ===== 视图：搜索 ===== -->
+    <section id="view-search" class="view">
+      <header class="page-head"><h1>搜索</h1></header>
+      <div class="search-bar ac-wrap">
+        <svg class="s-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20.5 20.5-4-4"></path></svg>
+        <input id="search-input" type="text" maxlength="60" autocomplete="off">
+        <div class="suggest" id="suggest-search" hidden></div>
+      </div>
+      <div id="search-results" class="grid" hidden></div>
+      <div class="empty" id="search-hint">输入番名、别名或任意 tag 开始搜索</div>
+      <div class="empty" id="search-empty" hidden>没有找到匹配的番剧</div>
+    </section>
+  </main>
+
+  <!-- ===== 底部液态玻璃切换栏 ===== -->
+  <nav class="dock" id="dock" aria-label="界面切换">
+    <span class="dock-slider" aria-hidden="true"></span>
+    <button type="button" class="dock-btn is-active" data-view="library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4" width="4" height="16" rx="1.5"></rect><rect x="10" y="4" width="4" height="16" rx="1.5"></rect><rect x="15.4" y="4" width="4" height="16" rx="1.5"></rect></svg>
+      <span>资源库</span>
+    </button>
+    <button type="button" class="dock-btn" data-view="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="m20.5 20.5-4-4"></path></svg>
+      <span>搜索</span>
+    </button>
+  </nav>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= 数据与本地存储 ================= */
+  var STORAGE_KEY = 'anime_library_beta_v1';
+  var animeList = load();
+  var pendingTags = [];
+  var reduceMotion = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  // 任意修改都实时同步到本地
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(animeList)); } catch (e) {}
+  }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  // 所有已记录的 tag（保留首次出现的拼写，去重不区分大小写）
+  function allTags() {
+    var map = {};
+    var result = [];
+    animeList.forEach(function (a) {
+      (a.tags || []).forEach(function (t) {
+        var k = t.toLowerCase();
+        if (!(k in map)) { map[k] = true; result.push(t); }
+      });
+    });
+    return result;
+  }
+
+  /* ================= DOM 引用 ================= */
+  var $ = function (id) { return document.getElementById(id); };
+  var addForm = $('add-form'), nameInput = $('input-name'), aliasInput = $('input-alias'),
+      tagInput = $('input-tag'), tagEditor = $('tag-editor'), formError = $('form-error'),
+      btnAdd = $('btn-add'),
+      libGrid = $('library-grid'), libEmpty = $('library-empty'),
+      searchInput = $('search-input'), searchResults = $('search-results'),
+      searchHint = $('search-hint'), searchEmpty = $('search-empty'),
+      dock = $('dock');
+
+  /* ================= 卡片渲染 ================= */
+  function cardHTML(a) {
+    var alias = a.aliasFilled
+      ? '<div class="card-alias">别名：' + esc(a.alias) + '</div>' : '';
+    var tags = (a.tags || []).map(function (t) {
+      return '<span class="tag">' + esc(t) + '</span>';
+    }).join('');
+    var tagBlock = tags ? '<div class="card-tags">' + tags + '</div>' : '';
+    var delBtn = '<div class="card-foot"><button type="button" class="btn-del" data-id="' +
+                 esc(a.id) + '" aria-label="删除' + esc(a.name) + '">' +
+                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M10 11v6M14 11v6"></path></svg>' +
+                 '<span>删除</span></button></div>';
+    return '<article class="card" data-card-id="' + esc(a.id) + '"><div class="card-name">' + esc(a.name) +
+           '</div>' + alias + tagBlock + delBtn + '</article>';
+  }
+  function renderLibrary() {
+    libGrid.innerHTML = animeList.map(cardHTML).join('');
+    libEmpty.hidden = animeList.length > 0;
+  }
+
+  /* ================= 标签编辑器（添加表单） ================= */
+  function renderChips() {
+    tagEditor.querySelectorAll('.chip').forEach(function (n) { n.remove(); });
+    pendingTags.forEach(function (t, i) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      var label = document.createElement('span');
+      label.textContent = t;
+      var x = document.createElement('button');
+      x.type = 'button'; x.className = 'chip-x'; x.textContent = '×';
+      x.setAttribute('aria-label', '移除标签 ' + t);
+      x.addEventListener('click', function () {
+        pendingTags.splice(i, 1);
+        renderChips();
+        tagInput.focus();
+      });
+      chip.appendChild(label); chip.appendChild(x);
+      tagEditor.insertBefore(chip, tagInput);
+    });
+  }
+  function addPendingTag(raw) {
+    var t = (raw || '').trim();
+    if (!t) return;
+    var exists = pendingTags.some(function (p) { return p.toLowerCase() === t.toLowerCase(); });
+    if (!exists) pendingTags.push(t);
+    tagInput.value = '';
+    renderChips();
+  }
+  tagInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); addPendingTag(tagInput.value); }
+    if (e.key === 'Backspace' && tagInput.value === '' && pendingTags.length) {
+      pendingTags.pop(); renderChips();
+    }
+  });
+
+  /* ================= 标签自动补全（输入单个字符即触发） ================= */
+  function setupAutocomplete(input, suggestEl, onSelect, excludePending) {
+    var items = [], index = -1;
+    var container = input.closest('.panel, .search-bar');
+    function close() {
+      suggestEl.hidden = true; items = []; index = -1;
+      if (container) container.classList.remove('suggest-open');
+    }
+    function paint() {
+      Array.prototype.forEach.call(suggestEl.children, function (el, i) {
+        el.classList.toggle('on', i === index);
+      });
+    }
+    function update() {
+      var q = input.value.trim().toLowerCase();
+      if (q.length < 1) { close(); return; }
+      items = allTags().filter(function (t) {
+        if (t.toLowerCase().indexOf(q) === -1) return false;
+        if (excludePending && pendingTags.some(function (p) {
+          return p.toLowerCase() === t.toLowerCase();
+        })) return false;
+        return true;
+      }).slice(0, 8);
+      if (!items.length) { close(); return; }
+      index = -1;
+      suggestEl.innerHTML = items.map(function (t) {
+        return '<button type="button" class="suggest-item"><span class="ac-tag">#' +
+               esc(t) + '</span></button>';
+      }).join('');
+      suggestEl.hidden = false;
+      if (container) container.classList.add('suggest-open');
+      if (!reduceMotion) {
+        suggestEl.animate(
+          [{ opacity: 0, transform: 'translateY(-6px) scale(.97)' },
+           { opacity: 1, transform: 'none' }],
+          { duration: 170, easing: 'cubic-bezier(.22,1,.36,1)' }
+        );
+      }
+    }
+    input.addEventListener('input', update);
+    input.addEventListener('focus', update);
+    input.addEventListener('keydown', function (e) {
+      if (suggestEl.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); index = Math.min(index + 1, items.length - 1); paint(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); index = Math.max(index - 1, 0); paint(); }
+      else if (e.key === 'Enter') {
+        if (index >= 0) { e.preventDefault(); onSelect(items[index]); close(); }
+      } else if (e.key === 'Escape') { close(); }
+    });
+    suggestEl.addEventListener('mousedown', function (e) {
+      var btn = e.target.closest('.suggest-item');
+      if (btn) { e.preventDefault(); onSelect(items[parseInt(btn.dataset.i, 10)]); close(); }
+    });
+    suggestEl.addEventListener('click', function (e) {
+      var btn = e.target.closest('.suggest-item');
+      if (btn) { onSelect(items[parseInt(btn.dataset.i, 10)]); close(); }
+    });
+    document.addEventListener('click', function (e) {
+      if (!suggestEl.contains(e.target) && e.target !== input) close();
+    });
+  }
+  setupAutocomplete(
+    tagInput, $('suggest-add'),
+    function (t) { addPendingTag(t); },
+    true
+  );
+  setupAutocomplete(
+    searchInput, $('suggest-search'),
+    function (t) {
+      searchInput.value = t;
+      renderSearch();
+      searchInput.focus();
+    },
+    false
+  );
+
+  /* ================= 添加番剧 ================= */
+  nameInput.addEventListener('input', function () { formError.hidden = true; });
+  addForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = nameInput.value.trim();
+    if (!name) {
+      formError.textContent = '请输入番名';
+      formError.hidden = false;
+      nameInput.focus();
+      return;
+    }
+    if (tagInput.value.trim()) addPendingTag(tagInput.value);
+    var alias = aliasInput.value.trim();
+    var newItem = {
+      id: uid(),
+      name: name,
+      alias: alias || name,   // 别名未填写则与主番名相同
+      aliasFilled: !!alias,   // 未填写时卡片不显示别名
+      tags: pendingTags.slice()
+    };
+    animeList.push(newItem);
+    save();
+    renderLibrary();
+    var newCard = libGrid.querySelector('[data-card-id="' + newItem.id + '"]');
+    if (newCard && !reduceMotion) {
+      newCard.animate(
+        [{ opacity: 0, transform: 'translateY(12px) scale(.94)' },
+         { opacity: 1, transform: 'none' }],
+        { duration: 340, easing: 'cubic-bezier(.22,1,.36,1)' }
+      );
+    }
+    nameInput.value = ''; aliasInput.value = ''; tagInput.value = '';
+    pendingTags = [];
+    renderChips();
+    formError.hidden = true;
+    btnAdd.textContent = '已添加';
+    btnAdd.classList.add('is-done');
+    setTimeout(function () {
+      btnAdd.textContent = '添加';
+      btnAdd.classList.remove('is-done');
+    }, 1200);
+    nameInput.focus();
+  });
+
+  /* ================= 搜索（番名或任意 tag，单字符即可） ================= */
+  function renderSearch() {
+    var q = searchInput.value.trim().toLowerCase();
+    if (!q) {
+      searchResults.hidden = true;
+      searchResults.innerHTML = '';
+      searchHint.hidden = false;
+      searchEmpty.hidden = true;
+      return;
+    }
+    var matched = animeList.filter(function (a) {
+      if (a.name.toLowerCase().indexOf(q) !== -1) return true;
+      if ((a.alias || '').toLowerCase().indexOf(q) !== -1) return true;
+      return (a.tags || []).some(function (t) { return t.toLowerCase().indexOf(q) !== -1; });
+    });
+    searchHint.hidden = true;
+    if (matched.length) {
+      searchResults.innerHTML = matched.map(cardHTML).join('');
+      searchResults.hidden = false;
+      searchEmpty.hidden = true;
+    } else {
+      searchResults.innerHTML = '';
+      searchResults.hidden = true;
+      searchEmpty.hidden = false;
+    }
+  }
+  searchInput.addEventListener('input', renderSearch);
+
+  /* ================= 删除番剧（实时同步本地） ================= */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.btn-del') : null;
+    if (!btn) return;
+    var id = btn.dataset.id;
+    var item = null;
+    for (var i = 0; i < animeList.length; i++) {
+      if (animeList[i].id === id) { item = animeList[i]; break; }
+    }
+    if (!item) return;
+    if (!window.confirm('确定删除「' + item.name + '」吗？')) return;
+    animeList = animeList.filter(function (a) { return a.id !== id; });
+    save();
+    renderLibrary();
+    renderSearch();
+  });
+
+  /* ================= 底部切换栏（点击 + 拖动切换） ================= */
+  var dockSlider = dock.querySelector('.dock-slider');
+  var dockButtons = Array.prototype.slice.call(dock.querySelectorAll('.dock-btn'));
+  var libBtn = dock.querySelector('.dock-btn[data-view="library"]');
+  var searchBtn = dock.querySelector('.dock-btn[data-view="search"]');
+  var INK = [58, 63, 71], BLUE = [0, 122, 255];
+  function mixColor(a, b, t) {
+    return 'rgb(' +
+      Math.round(a[0] + (b[0] - a[0]) * t) + ',' +
+      Math.round(a[1] + (b[1] - a[1]) * t) + ',' +
+      Math.round(a[2] + (b[2] - a[2]) * t) + ')';
+  }
+  function paintViews(view) {
+    document.querySelectorAll('.view').forEach(function (v) {
+      v.classList.toggle('is-active', v.id === 'view-' + view);
+    });
+    dockButtons.forEach(function (b) {
+      b.classList.toggle('is-active', b.dataset.view === view);
+    });
+    dock.classList.toggle('is-search', view === 'search');
+  }
+  function iconPop(view) {
+    if (reduceMotion) return;
+    dock.querySelector('.dock-btn.is-active svg').animate(
+      [{ transform: 'scale(.78)' },
+       { transform: 'scale(1.22)', offset: .55 },
+       { transform: 'scale(1)' }],
+      { duration: 420, easing: 'cubic-bezier(.34,1.5,.5,1)' }
+    );
+  }
+  function switchView(view) {
+    paintViews(view);
+    if (!reduceMotion) {
+      var x = view === 'search' ? 'translateX(100%)' : 'translateX(0)';
+      dockSlider.animate(
+        [{ transform: x + ' scale(.9)' },
+         { transform: x + ' scale(1.07)', offset: .55 },
+         { transform: x + ' scale(1)' }],
+        { duration: 460, easing: 'cubic-bezier(.34,1.45,.42,1)' }
+      );
+      iconPop(view);
+    }
+    if (view === 'search') setTimeout(function () { searchInput.focus(); }, 60);
+  }
+  // 点击切换（拖动结束后浏览器还会派发一次 click，在捕获阶段吞掉，避免重复触发）
+  var swallowPending = false;
+  function swallowClick(e) {
+    swallowPending = false;
+    e.stopPropagation();
+    e.preventDefault();
+    document.removeEventListener('click', swallowClick, true);
+  }
+  function swallowNextClick() {
+    if (swallowPending) return;
+    swallowPending = true;
+    document.addEventListener('click', swallowClick, true);
+  }
+  function cancelSwallow() {
+    swallowPending = false;
+    document.removeEventListener('click', swallowClick, true);
+  }
+  dockButtons.forEach(function (b) {
+    b.addEventListener('click', function () { switchView(b.dataset.view); });
+  });
+
+  /* 拖动切换：滑块跟手移动，文字颜色随位置过渡，松手吸附或回弹
+     注意：不在 pointerdown 时捕获指针，保证普通点击时 click 仍落在按钮上；
+     移动/松手监听挂在 window，拖动时移出切换栏也不丢事件。 */
+  var dragging = false, dragMoved = false;
+  var startX = 0, baseX = 0, curX = 0, maxX = 0;
+  function dragStart(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    cancelSwallow(); // 新一次按压开始，清掉可能遗留的拦截（如上次松手在窗外）
+    dragging = true; dragMoved = false;
+    startX = e.clientX;
+    var oneW = dockSlider.getBoundingClientRect().width;
+    maxX = oneW;
+    baseX = dock.classList.contains('is-search') ? maxX : 0;
+    curX = baseX;
+    window.addEventListener('pointermove', dragMove);
+    window.addEventListener('pointerup', dragEnd);
+    window.addEventListener('pointercancel', dragEnd);
+  }
+  function dragMove(e) {
+    if (!dragging) return;
+    var dx = e.clientX - startX;
+    if (!dragMoved) {
+      if (Math.abs(dx) < 6) return;
+      dragMoved = true;
+      dock.classList.add('is-dragging');
+      dockSlider.style.transition = 'none';
+    }
+    curX = Math.max(0, Math.min(maxX, baseX + dx));
+    dockSlider.style.transform = 'translateX(' + curX + 'px) scale(1.08)';
+    var p = curX / maxX;
+    libBtn.style.color = mixColor(BLUE, INK, p);
+    searchBtn.style.color = mixColor(INK, BLUE, p);
+    libBtn.style.fontWeight = p < .5 ? '650' : '500';
+    searchBtn.style.fontWeight = p > .5 ? '650' : '500';
+  }
+  function dragEnd() {
+    if (!dragging) return;
+    dragging = false;
+    window.removeEventListener('pointermove', dragMove);
+    window.removeEventListener('pointerup', dragEnd);
+    window.removeEventListener('pointercancel', dragEnd);
+    dock.classList.remove('is-dragging');
+    dockSlider.style.transition = '';
+    libBtn.style.color = ''; searchBtn.style.color = '';
+    libBtn.style.fontWeight = ''; searchBtn.style.fontWeight = '';
+    if (!dragMoved) { dockSlider.style.transform = ''; return; } // 视为点击，click 自然触发
+    swallowNextClick();
+    var target = curX >= maxX / 2 ? 'search' : 'library';
+    var finalX = target === 'search' ? maxX : 0;
+    paintViews(target);
+    if (reduceMotion) {
+      dockSlider.style.transform = '';
+    } else {
+      var anim = dockSlider.animate(
+        [{ transform: 'translateX(' + curX + 'px) scale(1.08)' },
+         { transform: 'translateX(' + finalX + 'px) scale(.95)', offset: .5 },
+         { transform: 'translateX(' + finalX + 'px) scale(1)' }],
+        { duration: 480, easing: 'cubic-bezier(.34,1.45,.42,1)' }
+      );
+      anim.onfinish = function () { dockSlider.style.transform = ''; };
+    }
+    if (target === 'search') setTimeout(function () { searchInput.focus(); }, 80);
+  }
+  dock.addEventListener('pointerdown', dragStart);
+
+  /* ================= 初始化 ================= */
+  renderLibrary();
+  renderChips();
+  renderSearch();
+})();
+</script>
+</body>
+</html>
